@@ -10,9 +10,9 @@ PIDFILE="$INSTALL_DIR/tailscale-watchdog.pid"
 is_running() {
   [ -f "$PIDFILE" ] || return 1
   local pid
-  pid="$(cat "$PIDFILE" 2>/dev/null)" || return 1
+  pid="$(cat "$PIDFILE" 2> /dev/null)" || return 1
   [ -n "$pid" ] || return 1
-  kill -0 "$pid" 2>/dev/null
+  kill -0 "$pid" 2> /dev/null
 }
 
 start() {
@@ -32,7 +32,7 @@ start() {
 
   rm -f "$PIDFILE"
 
-  start-stop-daemon -S -b -m -p "$PIDFILE" --exec "$WATCHDOG" >/dev/null 2>&1
+  start-stop-daemon -S -b -m -p "$PIDFILE" --exec "$WATCHDOG" > /dev/null 2>&1
   local rc=$?
 
   if [ $rc -eq 0 ] && is_running; then
@@ -48,14 +48,14 @@ stop() {
   echo -n "Stopping Tailscale: "
 
   if is_running; then
-    start-stop-daemon -K -p "$PIDFILE" >/dev/null 2>&1 || true
+    start-stop-daemon -K -p "$PIDFILE" > /dev/null 2>&1 || true
   fi
 
   # Give watchdog/monitor a moment to shut down cleanly.
   sleep 2
 
   # Best-effort: in case tailscaled was orphaned.
-  killall tailscaled 2>/dev/null || true
+  killall tailscaled 2> /dev/null || true
 
   rm -f "$PIDFILE"
   echo "done"
@@ -65,9 +65,9 @@ stop() {
 status() {
   if is_running; then
     echo "Tailscale watchdog: started"
-    if pgrep -x tailscaled >/dev/null 2>&1; then
+    if pgrep -x tailscaled > /dev/null 2>&1; then
       echo "Tailscale daemon: running"
-      /userdata/tailscale/tailscale status 2>/dev/null || echo "Tailscale: not connected"
+      /userdata/tailscale/tailscale status 2> /dev/null || echo "Tailscale: not connected"
     else
       echo "Tailscale daemon: stopped"
     fi
@@ -77,9 +77,16 @@ status() {
   fi
 }
 
-restart() { stop; sleep 2; start; }
+restart() {
+  stop
+  sleep 2
+  start
+}
 
 case "${1:-}" in
-  start|stop|status|restart) "$1" ;;
-  *) echo "Usage: $0 {start|stop|status|restart}"; exit 1 ;;
+  start | stop | status | restart) "$1" ;;
+  *)
+    echo "Usage: $0 {start|stop|status|restart}"
+    exit 1
+    ;;
 esac
