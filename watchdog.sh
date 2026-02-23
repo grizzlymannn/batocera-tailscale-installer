@@ -8,8 +8,10 @@ MONITOR_SCRIPT="$INSTALL_DIR/monitor.sh"
 LOGFILE="$INSTALL_DIR/logs/watchdog.log"
 PIDFILE="$INSTALL_DIR/tailscale-watchdog.pid"
 RESTART_COUNT=0
-BACKOFF=5       # Initial backoff in seconds
-MAX_BACKOFF=120 # Maximum wait time
+BACKOFF=5                         # Initial backoff in seconds
+MAX_BACKOFF=120                   # Maximum wait time
+MAX_LOG_SIZE=$((2 * 1024 * 1024)) # 2MB
+MAX_LOG_BACKUPS=3
 
 mkdir -p "$(dirname "$LOGFILE")" "$(dirname "$PIDFILE")"
 
@@ -82,17 +84,48 @@ cleanup() {
       kill -TERM "$child" 2> /dev/null || true
     done
   }
+
   # If we started the monitor in its own session, kill the process group first
-  if [[ -n $MONITOR_PID && $MONITOR_PID =~ ^[0-9]+$ ]] && [[ $SETSID_AVAILABLE -eq 1 ]]; then
+  if [[ -n $MONITOR_PID && $MONITOR_PID =~ ^[0-9]+$ && $MONITOR_PID -gt 0 ]] && [[ $SETSID_AVAILABLE -eq 1 ]]; then
     echo "$(date) - Stopping monitor process group: -$MONITOR_PID"
     kill -TERM -"$MONITOR_PID" 2> /dev/null || true
     sleep 2
     kill -KILL -"$MONITOR_PID" 2> /dev/null || true
   else
+    echo "$(date) - Stopping monitor process and descendants with 'kill_descendants'"
     kill_descendants $$
   fi
   rm -f "$PIDFILE"
+  sleep 1
   exit 0
+}
+
+rotate_log_if_needed() {
+  local file="$1"
+
+  [[ -f $file ]] || return 0
+
+  local size
+  size=$(stat -c%s "$file" 2> /dev/null || echo 0)
+
+  ((size <= MAX_LOG_SIZE)) && return 0
+
+  echo "$(date) - Rotating $file (size: $size bytes)"
+
+  # Remove oldest backup if exceeding limit
+  if [[ -f "$file.$MAX_LOG_BACKUPS" ]]; then
+    rm -f "$file.$MAX_LOG_BACKUPS"
+  fi
+
+  # Shift backups upward
+  for ((i = MAX_LOG_BACKUPS - 1; i >= 1; i--)); do
+    if [[ -f "$file.$i" ]]; then
+      mv "$file.$i" "$file.$((i + 1))"
+    fi
+  done
+
+  # Move current log to .1
+  mv "$file" "$file.1"
 }
 
 trap cleanup SIGTERM SIGINT EXIT
@@ -114,6 +147,10 @@ while true; do
   wait "$MONITOR_PID"
   rc=$?
   echo "$(date) - Monitor exited with code $rc"
+
+  rotate_log_if_needed "$INSTALL_DIR/logs/monitor.log"
+  rotate_log_if_needed "$INSTALL_DIR/logs/tailscaled.log"
+  rotate_log_if_needed "$LOGFILE"
 
   if [[ $rc -eq 0 ]]; then
     # Normal exit resets counters

@@ -97,14 +97,20 @@ tailscaled_running() {
     pidof tailscaled > /dev/null 2>&1
     return $?
   fi
-  # Fallback: search process list for matching command name
-  ps -eo comm= | awk '$1 == "tailscaled" { exit 0 } END { exit 1 }'
+
+  echo "$(date) - Warning: pgrep and pidof not available, falling back to ps for process detection"
+  if ps -eo comm | grep -x tailscaled > /dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
 }
+
 tailscaled_responsive() { tailscaled_running && timeout 5 "$CLIENT" status > /dev/null 2>&1; }
 
 start_tailscaled() {
   echo "$(date) - Starting tailscaled..."
-  "$DAEMON" -state "$STATE" >> "$INSTALL_DIR/tailscaled.log" 2>&1 &
+  "$DAEMON" -state "$STATE" >> "$INSTALL_DIR/logs/tailscaled.log" 2>&1 &
   sleep 2
 }
 
@@ -151,13 +157,21 @@ strip_quotes() {
 }
 
 build_tailscale_cmd() {
-  local CMD=("$CLIENT" up -state "$STATE")
+  local CMD=("$CLIENT" up --reset)
 
   local AR
   AR=$(strip_quotes "${ADVERTISE_ROUTES:-}")
-  [[ -n $AR ]] && CMD+=("--advertise-routes=$AR" "--snat-subnet-routes=${SNAT_SUBNET_ROUTES:-1}")
+  if [[ -n $AR ]]; then
+    CMD+=("--advertise-routes=$AR" "--snat-subnet-routes=${SNAT_SUBNET_ROUTES:-1}")
+    sysctl -w net.ipv4.ip_forward=1 > /dev/null 2>&1 || true
+    sysctl -w net.ipv6.conf.all.forwarding=1 > /dev/null 2>&1 || true
+  fi
 
-  [[ ${ADVERTISE_EXIT_NODE:-0} -eq 1 ]] && CMD+=("--advertise-exit-node")
+  if [[ ${ADVERTISE_EXIT_NODE:-0} -eq 1 ]]; then
+    CMD+=("--advertise-exit-node")
+    sysctl -w net.ipv4.ip_forward=1 > /dev/null 2>&1 || true
+    sysctl -w net.ipv6.conf.all.forwarding=1 > /dev/null 2>&1 || true
+  fi
 
   local EN
   EN=$(strip_quotes "${EXIT_NODE:-}")
@@ -197,10 +211,25 @@ apply_tailscale_config() {
   mapfile -d $'\0' -t CMD < <(build_tailscale_cmd)
 
   echo "$(date) - Running Tailscale command: ${CMD[*]}"
-  if ! "${CMD[@]}" > /dev/null 2>&1; then
-    echo "$(date) - Warning: tailscale up returned non-zero"
-  else
+  # Capture output and exit code to aid debugging when `tailscale up` fails
+  max_lines=50
+  if output="$("${CMD[@]}" 2>&1)"; then
     echo "$(date) - Tailscale configuration applied successfully"
+
+    if [[ -n $output ]]; then
+      echo "$(date) - tailscale up output:"
+      printf '%s\n' "$output" | tail -n "$max_lines"
+    fi
+  else
+    rc=$?
+    echo "$(date) - Warning: tailscale up returned non-zero (exit $rc)"
+
+    if [[ -n $output ]]; then
+      echo "$(date) - tailscale up output:"
+      printf '%s\n' "$output" | tail -n "$max_lines"
+    else
+      echo "$(date) - tailscale up produced no output"
+    fi
   fi
 }
 

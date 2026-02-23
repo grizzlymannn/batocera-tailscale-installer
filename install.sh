@@ -327,7 +327,7 @@ run_config_wizard() {
     echo "----- Advanced Options -----"
     echo
 
-    EXIT_NODE_ALLOW_LAN_ACCESS="$(prompt_yes_no "Allow LAN access when using exit node?" 0)"
+    EXIT_NODE_ALLOW_LAN_ACCESS="$(prompt_yes_no "Allow LAN access when using this device as an exit node?" 0)"
     ACCEPT_DNS="$(prompt_yes_no "Accept DNS settings from tailnet?" 1)"
     SHIELDS_UP="$(prompt_yes_no "Enable shields-up (block incoming connections)?" 0)"
     STATEFUL_FILTERING="$(prompt_yes_no "Enable stateful filtering?" 0)"
@@ -370,7 +370,6 @@ main() {
   require_root
   check_deps
   detect_arch
-  stop_existing
   check_tun
 
   mkdir -p "$INSTALL_DIR"
@@ -446,7 +445,9 @@ main() {
     exit 1
   }
 
+  stop_existing
   install_files
+
   # Ensure the service/daemon is running (enable/start if available)
   ensure_service_running || echo "Warning: could not ensure tailscaled/service is running"
 
