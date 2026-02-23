@@ -3,12 +3,13 @@
 
 set -u
 
-MONITOR_SCRIPT="/userdata/tailscale/monitor.sh"
-LOGFILE="/userdata/tailscale/watchdog.log"
-PIDFILE="/var/run/tailscale-watchdog.pid"
-MAX_RETRIES=5      # Number of consecutive crashes before backoff
-BACKOFF_TIME=30    # Seconds to wait after MAX_RETRIES
+INSTALL_DIR="/userdata/tailscale"
+MONITOR_SCRIPT="$INSTALL_DIR//monitor.sh"
+LOGFILE="$INSTALL_DIR/logs/watchdog.log"
+PIDFILE="$INSTALL_DIR/tailscale-watchdog.pid"
 RESTART_COUNT=0
+BACKOFF=5          # Initial backoff in seconds
+MAX_BACKOFF=120    # Maximum wait time
 
 mkdir -p "$(dirname "$LOGFILE")" "$(dirname "$PIDFILE")"
 
@@ -34,22 +35,28 @@ if [ ! -x "$MONITOR_SCRIPT" ]; then
 fi
 
 while true; do
-  echo "$(date) - Starting monitor script..."
-  "$MONITOR_SCRIPT" &
-  MONITOR_PID=$!
+    echo "$(date) - Starting monitor script..."
+    "$MONITOR_SCRIPT" &
+    MONITOR_PID=$!
 
-  wait "$MONITOR_PID"
-  rc=$?
-  echo "$(date) - Monitor script exited with code $rc"
+    wait "$MONITOR_PID"
+    rc=$?
+    echo "$(date) - Monitor exited with code $rc"
 
-  RESTART_COUNT=$((RESTART_COUNT+1))
+    if [[ $rc -eq 0 ]]; then
+        # Normal exit resets counters
+        RESTART_COUNT=0
+        BACKOFF=5
+    else
+        RESTART_COUNT=$((RESTART_COUNT + 1))
+        echo "$(date) - Monitor crashed $RESTART_COUNT times"
 
-  if [[ $RESTART_COUNT -ge $MAX_RETRIES ]]; then
-    echo "$(date) - Monitor crashed $RESTART_COUNT times consecutively. Backing off for $BACKOFF_TIME seconds..."
-    sleep "$BACKOFF_TIME"
-    RESTART_COUNT=0
-  else
-    echo "$(date) - Restarting monitor in 5 seconds..."
-    sleep 5
-  fi
+        # Wait with exponential backoff
+        echo "$(date) - Waiting $BACKOFF seconds before restart..."
+        sleep "$BACKOFF"
+
+        # Double backoff, but do not exceed MAX_BACKOFF
+        BACKOFF=$(( BACKOFF * 2 ))
+        (( BACKOFF > MAX_BACKOFF )) && BACKOFF=$MAX_BACKOFF
+    fi
 done

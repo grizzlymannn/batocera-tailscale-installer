@@ -12,7 +12,7 @@ DAEMON="$INSTALL_DIR/tailscaled"
 CLIENT="$INSTALL_DIR/tailscale"
 STATE="$INSTALL_DIR/state"
 CONFIG_FILE="$INSTALL_DIR/config.conf"
-LOGFILE="$INSTALL_DIR/monitor.log"
+LOGFILE="$INSTALL_DIR/logs/monitor.log"
 STATEFILE="/tmp/tailscale-network-state"
 
 mkdir -p "$(dirname "$LOGFILE")" "$INSTALL_DIR"
@@ -93,34 +93,44 @@ ensure_tailscaled() {
     return 0
 }
 
-# ----------------------------
-# Build Tailscale command from config
-# ----------------------------
+# -----------------------------------------
+# Build Tailscale command safely (null-separated)
+# -----------------------------------------
 build_tailscale_cmd() {
-    CMD=("$CLIENT" up -state "$STATE")
+    local CMD=("$CLIENT" up -state "$STATE")
 
-    [[ -n "$ADVERTISE_ROUTES" ]] && CMD+=("--advertise-routes=$ADVERTISE_ROUTES" "--snat-subnet-routes=$SNAT_SUBNET_ROUTES")
-    [[ "$ADVERTISE_EXIT_NODE" -eq 1 ]] && CMD+=("--advertise-exit-node")
-    [[ -n "$EXIT_NODE" ]] && CMD+=("--exit-node=$EXIT_NODE" "--exit-node-allow-lan-access=$EXIT_NODE_ALLOW_LAN_ACCESS")
-    [[ "$ACCEPT_ROUTES" -eq 1 ]] && CMD+=("--accept-routes=$ACCEPT_ROUTES")
-    [[ "$ACCEPT_DNS" -eq 1 ]] && CMD+=("--accept-dns=$ACCEPT_DNS")
-    [[ "$SHIELDS_UP" -eq 1 ]] && CMD+=("--shields-up=$SHIELDS_UP")
-    [[ -n "$HOSTNAME" ]] && CMD+=("--hostname=$HOSTNAME")
-    [[ -n "$NETFILTER_MODE" ]] && CMD+=("--netfilter-mode=$NETFILTER_MODE")
-    [[ "$STATEFUL_FILTERING" -eq 1 ]] && CMD+=("--stateful-filtering=$STATEFUL_FILTERING")
+    [[ -n "${ADVERTISE_ROUTES:-}" ]] && CMD+=("--advertise-routes=$ADVERTISE_ROUTES" "--snat-subnet-routes=${SNAT_SUBNET_ROUTES:-1}")
+    [[ "${ADVERTISE_EXIT_NODE:-0}" -eq 1 ]] && CMD+=("--advertise-exit-node")
+    [[ -n "${EXIT_NODE:-}" ]] && CMD+=("--exit-node=$EXIT_NODE" "--exit-node-allow-lan-access=${EXIT_NODE_ALLOW_LAN_ACCESS:-0}")
+    [[ "${ACCEPT_ROUTES:-0}" -eq 1 ]] && CMD+=("--accept-routes=1")
+    [[ "${ACCEPT_DNS:-0}" -eq 1 ]] && CMD+=("--accept-dns=1")
+    [[ "${SHIELDS_UP:-0}" -eq 1 ]] && CMD+=("--shields-up=1")
+    [[ -n "${HOSTNAME:-}" ]] && CMD+=("--hostname=$HOSTNAME")
+    [[ -n "${NETFILTER_MODE:-}" ]] && CMD+=("--netfilter-mode=$NETFILTER_MODE")
+    [[ "${STATEFUL_FILTERING:-0}" -eq 1 ]] && CMD+=("--stateful-filtering=1")
 
-    echo "${CMD[@]}"
+    # null-separated for safe array assignment
+    printf '%s\0' "${CMD[@]}"
 }
 
+# -----------------------------------------
+# Apply configuration
+# -----------------------------------------
 apply_tailscale_config() {
     get_network
     [[ -z "$CIDR" ]] && { echo "$(date) - No valid network detected, skipping"; return; }
 
     ensure_tailscaled || return
 
-    CMD=($(build_tailscale_cmd))
+    # read null-separated command into array
+    mapfile -d '' CMD < <(build_tailscale_cmd)
+
     echo "$(date) - Running Tailscale command: ${CMD[*]}"
-    "${CMD[@]}" >/dev/null 2>&1 || echo "$(date) - Warning: tailscale up returned non-zero"
+    if ! "${CMD[@]}" >/dev/null 2>&1; then
+        echo "$(date) - Warning: tailscale up returned non-zero"
+    else
+        echo "$(date) - Tailscale configuration applied successfully"
+    fi
 }
 
 # ----------------------------
@@ -147,24 +157,29 @@ echo "$(date) - Initial network: $INTERFACE / $CIDR"
 echo "$INTERFACE|$CIDR" >"$STATEFILE"
 apply_tailscale_config
 
-# ----------------------------
+# -----------------------------------------
 # Monitor loop
-# ----------------------------
+# -----------------------------------------
+LAST_INTERFACE=""; LAST_CIDR=""
+
 echo "$(date) - Starting network monitor loop..."
+
 while true; do
-    while read -r event; do
+    # reset initial state from file if exists
+    [[ -f "$STATEFILE" ]] && IFS='|' read -r LAST_INTERFACE LAST_CIDR <"$STATEFILE"
+
+    # monitor network changes
+    ip monitor link route 2>/dev/null | while read -r; do
         sleep 2
         get_network
-
-        LAST_INTERFACE=""; LAST_CIDR=""
-        [[ -f "$STATEFILE" ]] && IFS='|' read -r LAST_INTERFACE LAST_CIDR <"$STATEFILE"
-
         if [[ "$INTERFACE" != "$LAST_INTERFACE" ]] || [[ "$CIDR" != "$LAST_CIDR" ]]; then
             echo "$(date) - Network changed: [$LAST_INTERFACE/$LAST_CIDR] -> [$INTERFACE/$CIDR]"
             echo "$INTERFACE|$CIDR" >"$STATEFILE"
+            LAST_INTERFACE="$INTERFACE"
+            LAST_CIDR="$CIDR"
             apply_tailscale_config
         fi
-    done < <(ip monitor link route 2>/dev/null)
+    done
 
     echo "$(date) - ip monitor exited unexpectedly, retrying in 5s..."
     sleep 5

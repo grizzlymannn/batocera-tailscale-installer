@@ -3,8 +3,9 @@
 
 set -u
 
-WATCHDOG="/userdata/tailscale/watchdog.sh"
-PIDFILE="/var/run/tailscale-watchdog.pid"
+INSTALL_DIR="/userdata/tailscale"
+WATCHDOG="$INSTALL_DIR/watchdog.sh"
+PIDFILE="$INSTALL_DIR/tailscale-watchdog.pid"
 
 is_running() {
   [ -f "$PIDFILE" ] || return 1
