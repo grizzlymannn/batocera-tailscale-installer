@@ -1,0 +1,51 @@
+name: Package and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare names
+        id: prepare
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSIONED="batocera-tailscale-installer-${TAG}.tar.gz"
+          LATEST="batocera-tailscale-installer-latest.tar.gz"
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "VERSIONED=$VERSIONED" >> $GITHUB_OUTPUT
+          echo "LATEST=$LATEST" >> $GITHUB_OUTPUT
+
+      - name: Create tarball
+        env:
+          VERSIONED: ${{ steps.prepare.outputs.VERSIONED }}
+          LATEST: ${{ steps.prepare.outputs.LATEST }}
+        run: |
+          # create a normalized tarball containing the runtime files
+          # list files explicitly to avoid including .git or CI files
+          FILE="$VERSIONED"
+          tar --sort=name --owner=0 --group=0 --numeric-owner -czf "$FILE" \
+            README.md install.sh monitor.sh watchdog.sh LICENSE config.conf.template services
+          # also produce a stable 'latest' name used by bootstrap
+          cp "$FILE" "$LATEST"
+          ls -lh "$FILE" "$LATEST"
+
+      - name: Create release and upload assets
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.prepare.outputs.TAG }}
+          name: ${{ steps.prepare.outputs.TAG }}
+          body: Release ${{ steps.prepare.outputs.TAG }}
+          files: ${{ steps.prepare.outputs.VERSIONED }},${{ steps.prepare.outputs.LATEST }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -20,9 +20,9 @@ NONINTERACTIVE=0
 TRACK="${TRACK:-stable}" # stable|unstable
 PKGS="https://pkgs.tailscale.com/${TRACK}/"
 GPG_KEY_FPR="2596A99E13C79D1737E11F0B5E304C4E0A6B90D1" # Tailscale release key
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$INSTALL_DIR/config.conf"
 CONFIG_TEMPLATE="$INSTALL_DIR/config.conf.template"
-TMP_INSTALL_DIR="$INSTALL_DIR/.new"
 INSTALLED_VERSION_FILE="$INSTALL_DIR/version"
 CURRENT_VERSION=""
 
@@ -54,7 +54,7 @@ require_root() { [[ $EUID -eq 0 ]] || {
 }; }
 
 check_deps() {
-  local DEPS=(curl gpg sha256sum tar install modprobe pkill pgrep)
+  local DEPS=(curl gpg sha256sum tar install modprobe pkill pgrep ip awk sed grep sort mktemp date timeout setsid)
   local missing=()
   for cmd in "${DEPS[@]}"; do
     command -v "$cmd" > /dev/null 2>&1 || missing+=("$cmd")
@@ -125,11 +125,46 @@ backup_config() {
 update_config_key() {
   local key="$1" value="$2" file="$3"
   local escaped_value
-  escaped_value=$(printf '%s\n' "$value" | sed 's/[&/\]/\\&/g')
+  escaped_value=$(printf '%s\n' "$value" | sed -e 's/\\/\\\\/g' -e 's/&/\\&/g')
+  # Ensure the target file exists to avoid grep failing under set -e
+  [[ -f $file ]] || touch "$file"
   if grep -qE "^[[:space:]]*${key}=" "$file"; then
     sed -i -E "s|^[[:space:]]*${key}=.*|${key}=${escaped_value}|" "$file"
   else
     printf "%s=%s\n" "$key" "$escaped_value" >> "$file"
+  fi
+}
+
+# Ensure the Tailscale service/daemon is enabled and running.
+# Returns 0 on success, non-zero on failure.
+ensure_service_running() {
+  if command -v batocera-services > /dev/null 2>&1; then
+    echo "Enabling $SERVICE_NAME service..."
+    batocera-services enable "$SERVICE_NAME" > /dev/null 2>&1 || echo "Warning: failed to enable $SERVICE_NAME"
+    echo "Starting $SERVICE_NAME service..."
+    batocera-services start "$SERVICE_NAME" > /dev/null 2>&1 || echo "Warning: failed to start $SERVICE_NAME"
+
+    # Wait for tailscaled to appear and be responsive (short timeout)
+    for i in {1..15}; do
+      pgrep -x tailscaled > /dev/null 2>&1 || {
+        sleep 1
+        continue
+      }
+      if "$INSTALL_DIR/tailscale" status > /dev/null 2>&1; then
+        echo "tailscaled responsive"
+        return 0
+      fi
+      sleep 1
+    done
+    echo "Warning: tailscaled did not become responsive"
+    return 1
+  else
+    # No Batocera service; start tailscaled directly if not running
+    if [[ -x "$INSTALL_DIR/tailscaled" ]] && ! pgrep -x tailscaled > /dev/null 2>&1; then
+      "$INSTALL_DIR/tailscaled" -state "$INSTALL_DIR/state" > /dev/null 2>&1 &
+      sleep 2
+    fi
+    return 0
   fi
 }
 
@@ -150,23 +185,17 @@ valid_cidr() {
 install_files() {
   echo "Staging binaries, scripts, and service for install..."
 
-  # Clean and create temp staging directory
-  rm -rf "$TMP_INSTALL_DIR"
-  mkdir -p "$TMP_INSTALL_DIR"
-
-  # ---- Stage binaries ----
-  install -m 0755 "$EXTRACTED_DIR/tailscale" "$TMP_INSTALL_DIR/tailscale"
-  install -m 0755 "$EXTRACTED_DIR/tailscaled" "$TMP_INSTALL_DIR/tailscaled"
-
-  # ---- Stage scripts ----
-  install -m 0755 monitor.sh "$TMP_INSTALL_DIR/monitor.sh"
-  install -m 0755 watchdog.sh "$TMP_INSTALL_DIR/watchdog.sh"
-
-  # ---- Move everything atomically ----
+  # Install binaries and supporting scripts directly into $INSTALL_DIR
   mkdir -p "$INSTALL_DIR"
-  mv "$TMP_INSTALL_DIR"/* "$INSTALL_DIR/"
 
-  rm -rf "$TMP_INSTALL_DIR"
+  # ---- Binaries ----
+  install -m 0755 "$EXTRACTED_DIR/tailscale" "$INSTALL_DIR/tailscale"
+  install -m 0755 "$EXTRACTED_DIR/tailscaled" "$INSTALL_DIR/tailscaled"
+
+  # ---- Scripts ----
+  install -m 0755 "$SCRIPT_DIR/monitor.sh" "$INSTALL_DIR/monitor.sh"
+  install -m 0755 "$SCRIPT_DIR/watchdog.sh" "$INSTALL_DIR/watchdog.sh"
+  install -m 0644 "$SCRIPT_DIR/config.conf.template" "$INSTALL_DIR/config.conf.template"
 
   echo "$TS_VER" > "$INSTALL_DIR/version"
   echo "Binaries and scripts installed to $INSTALL_DIR."
@@ -174,7 +203,7 @@ install_files() {
   # ---- Install service ----
   echo "Installing service..."
   mkdir -p "$SERVICE_DIR"
-  install -m 0755 "services/$SERVICE_NAME" "$SERVICE_DIR/$SERVICE_NAME"
+  install -m 0755 "$SCRIPT_DIR/services/$SERVICE_NAME" "$SERVICE_DIR/$SERVICE_NAME"
   echo "Service installed to $SERVICE_DIR/$SERVICE_NAME"
 
   # ---- Copy config template if missing ----
@@ -190,12 +219,6 @@ perform_auth_login() {
 
   echo
   echo "Attempting Tailscale authentication with provided auth key..."
-
-  # Start tailscaled if not running
-  if [[ -x "$INSTALL_DIR/tailscaled" ]] && ! pgrep -x tailscaled > /dev/null 2>&1; then
-    "$INSTALL_DIR/tailscaled" -state "$INSTALL_DIR/state" > /dev/null 2>&1 &
-    sleep 2
-  fi
 
   # Attempt automatic login
   if "$INSTALL_DIR/tailscale" up --auth-key="$AUTH_KEY" > /dev/null 2>&1; then
@@ -383,7 +406,7 @@ main() {
   curl -fLO "${PKGS}SHA256SUMS"
   curl -fLO "${PKGS}SHA256SUMS.sig"
   echo "Importing Tailscale GPG key..."
-  curl -fsSL https://pkgs.tailscale.com/stable/tailscale.asc | gpg --import > /dev/null 2>&1
+  curl -fsSL "${PKGS}tailscale.asc" | gpg --import > /dev/null 2>&1
 
   # Verify fingerprint matches expected
   IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '/^fpr:/ {print $10}' | head -n1)"
@@ -410,7 +433,18 @@ main() {
 
   echo "Extracting..."
   tar --no-same-owner --no-same-permissions -xzf "$TGZ"
-  EXTRACTED_DIR="$EXPECTED_DIR"
+
+  # Determine extracted directory. Prefer expected name, else probe archive.
+  if [[ -d $EXPECTED_DIR ]]; then
+    EXTRACTED_DIR="$EXPECTED_DIR"
+  else
+    EXTRACTED_DIR=$(tar -tzf "$TGZ" | awk -F/ 'NF{print $1; exit}')
+    EXTRACTED_DIR="${EXTRACTED_DIR#./}"
+    if [[ -z $EXTRACTED_DIR || ! -d $EXTRACTED_DIR ]]; then
+      EXTRACTED_DIR=$(find . -maxdepth 2 -type f -name tailscale -printf '%h\n' | head -n1)
+      EXTRACTED_DIR="${EXTRACTED_DIR#./}"
+    fi
+  fi
 
   [[ -x "$EXTRACTED_DIR/tailscale" && -x "$EXTRACTED_DIR/tailscaled" ]] || {
     echo "ERROR: binaries missing" >&2
@@ -418,12 +452,15 @@ main() {
   }
 
   install_files
+  # Ensure the service/daemon is running (enable/start if available)
+  ensure_service_running || echo "Warning: could not ensure tailscaled/service is running"
 
   # Auth login
   if [[ -z $AUTH_KEY && $NONINTERACTIVE -eq 0 ]]; then
     read -rsp "Enter Tailscale auth key (blank to skip): " AUTH_KEY
     echo
   fi
+
   perform_auth_login
 
   # Configuration wizard

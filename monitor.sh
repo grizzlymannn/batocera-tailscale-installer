@@ -28,7 +28,7 @@ need() { command -v "$1" > /dev/null 2>&1 || {
   exit 1
 }; }
 
-for cmd in ip timeout awk grep pgrep pkill; do need "$cmd"; done
+for cmd in ip timeout awk grep; do need "$cmd"; done
 
 for f in "$DAEMON" "$CLIENT"; do
   [ -x "$f" ] || {
@@ -37,11 +37,25 @@ for f in "$DAEMON" "$CLIENT"; do
   }
 done
 
+# Detect availability of process utilities (pgrep/pkill/pidof) and adapt
+PGREP_AVAILABLE=0
+if command -v pgrep > /dev/null 2>&1; then
+  PGREP_AVAILABLE=1
+fi
+PKILL_AVAILABLE=0
+if command -v pkill > /dev/null 2>&1; then
+  PKILL_AVAILABLE=1
+fi
+PIDOF_AVAILABLE=0
+if command -v pidof > /dev/null 2>&1; then
+  PIDOF_AVAILABLE=1
+fi
+
 # ----------------------------
 # Load configuration
 # ----------------------------
 # shellcheck source=/dev/null
-source "$CONFIG_FILE" || true
+[[ -f $CONFIG_FILE ]] && source "$CONFIG_FILE"
 
 # Apply safe defaults
 : "${ADVERTISE_ROUTES:=}"
@@ -74,7 +88,18 @@ get_network() {
   fi
 }
 
-tailscaled_running() { pgrep -x tailscaled > /dev/null 2>&1; }
+tailscaled_running() {
+  if [[ $PGREP_AVAILABLE -eq 1 ]]; then
+    pgrep -x tailscaled > /dev/null 2>&1
+    return $?
+  fi
+  if [[ $PIDOF_AVAILABLE -eq 1 ]]; then
+    pidof tailscaled > /dev/null 2>&1
+    return $?
+  fi
+  # Fallback: search process list for matching command name
+  ps -eo comm= | awk '$1 == "tailscaled" { exit 0 } END { exit 1 }'
+}
 tailscaled_responsive() { tailscaled_running && timeout 5 "$CLIENT" status > /dev/null 2>&1; }
 
 start_tailscaled() {
@@ -91,7 +116,18 @@ ensure_tailscaled() {
     start_tailscaled
   else
     echo "$(date) - Tailscaled running but unresponsive, restarting..."
-    pkill -x tailscaled || true
+    if [[ $PKILL_AVAILABLE -eq 1 ]]; then
+      pkill -x tailscaled || true
+    elif [[ $PIDOF_AVAILABLE -eq 1 ]]; then
+      for pid in $(pidof tailscaled 2> /dev/null || true); do
+        kill -TERM "$pid" 2> /dev/null || true
+      done
+    else
+      # Last resort: parse ps output for PIDs
+      for pid in $(ps -eo pid,comm | awk '/tailscaled$/ {print $1}'); do
+        kill -TERM "$pid" 2> /dev/null || true
+      done
+    fi
     sleep 1
     start_tailscaled
   fi
@@ -106,17 +142,39 @@ ensure_tailscaled() {
 # -----------------------------------------
 # Build Tailscale command safely (null-separated)
 # -----------------------------------------
+strip_quotes() {
+  local v="$1"
+  # remove a single leading and trailing double-quote if present
+  v="${v#\"}"
+  v="${v%\"}"
+  printf '%s' "$v"
+}
+
 build_tailscale_cmd() {
   local CMD=("$CLIENT" up -state "$STATE")
 
-  [[ -n ${ADVERTISE_ROUTES:-} ]] && CMD+=("--advertise-routes=$ADVERTISE_ROUTES" "--snat-subnet-routes=${SNAT_SUBNET_ROUTES:-1}")
+  local AR
+  AR=$(strip_quotes "${ADVERTISE_ROUTES:-}")
+  [[ -n $AR ]] && CMD+=("--advertise-routes=$AR" "--snat-subnet-routes=${SNAT_SUBNET_ROUTES:-1}")
+
   [[ ${ADVERTISE_EXIT_NODE:-0} -eq 1 ]] && CMD+=("--advertise-exit-node")
-  [[ -n ${EXIT_NODE:-} ]] && CMD+=("--exit-node=$EXIT_NODE" "--exit-node-allow-lan-access=${EXIT_NODE_ALLOW_LAN_ACCESS:-0}")
+
+  local EN
+  EN=$(strip_quotes "${EXIT_NODE:-}")
+  [[ -n $EN ]] && CMD+=("--exit-node=$EN" "--exit-node-allow-lan-access=${EXIT_NODE_ALLOW_LAN_ACCESS:-0}")
+
   [[ ${ACCEPT_ROUTES:-0} -eq 1 ]] && CMD+=("--accept-routes=1")
   [[ ${ACCEPT_DNS:-0} -eq 1 ]] && CMD+=("--accept-dns=1")
   [[ ${SHIELDS_UP:-0} -eq 1 ]] && CMD+=("--shields-up=1")
-  [[ -n ${HOSTNAME:-} ]] && CMD+=("--hostname=$HOSTNAME")
-  [[ -n ${NETFILTER_MODE:-} ]] && CMD+=("--netfilter-mode=$NETFILTER_MODE")
+
+  local HN
+  HN=$(strip_quotes "${HOSTNAME:-}")
+  [[ -n $HN ]] && CMD+=("--hostname=$HN")
+
+  local NF
+  NF=$(strip_quotes "${NETFILTER_MODE:-}")
+  [[ -n $NF ]] && CMD+=("--netfilter-mode=$NF")
+
   [[ ${STATEFUL_FILTERING:-0} -eq 1 ]] && CMD+=("--stateful-filtering=1")
 
   # null-separated for safe array assignment
@@ -135,8 +193,8 @@ apply_tailscale_config() {
 
   ensure_tailscaled || return
 
-  # read null-separated command into array
-  mapfile -d '' CMD < <(build_tailscale_cmd)
+  # read null-separated command into array (use -t to strip the delimiter)
+  mapfile -d $'\0' -t CMD < <(build_tailscale_cmd)
 
   echo "$(date) - Running Tailscale command: ${CMD[*]}"
   if ! "${CMD[@]}" > /dev/null 2>&1; then
@@ -182,8 +240,8 @@ while true; do
   # reset initial state from file if exists
   [[ -f $STATEFILE ]] && IFS='|' read -r LAST_INTERFACE LAST_CIDR < "$STATEFILE"
 
-  # monitor network changes
-  ip monitor link route 2> /dev/null | while read -r; do
+  # monitor network changes (run loop in current shell via process substitution)
+  while read -r; do
     sleep 2
     get_network
     if [[ $INTERFACE != "$LAST_INTERFACE" ]] || [[ $CIDR != "$LAST_CIDR" ]]; then
@@ -193,7 +251,7 @@ while true; do
       LAST_CIDR="$CIDR"
       apply_tailscale_config
     fi
-  done
+  done < <(ip monitor link route 2> /dev/null)
 
   echo "$(date) - ip monitor exited unexpectedly, retrying in 5s..."
   sleep 5
