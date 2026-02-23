@@ -38,14 +38,27 @@ jobs:
           cp "$FILE" "$LATEST"
           ls -lh "$FILE" "$LATEST"
 
-      - name: Create release and upload assets
+      - name: Upload versioned tarball as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.prepare.outputs.VERSIONED }}
+          path: ${{ steps.prepare.outputs.VERSIONED }}
+
+      - name: Upload latest tarball as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.prepare.outputs.LATEST }}
+          path: ${{ steps.prepare.outputs.LATEST }}
+
+      - name: Create release and attach artifacts
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ steps.prepare.outputs.TAG }}
           name: ${{ steps.prepare.outputs.TAG }}
           body: Release ${{ steps.prepare.outputs.TAG }}
-          files: ${{ steps.prepare.outputs.VERSIONED }},${{ steps.prepare.outputs.LATEST }}
+          artifacts: ${{ steps.prepare.outputs.VERSIONED }},${{ steps.prepare.outputs.LATEST }}
           draft: false
           prerelease: false
+          skipIfReleaseExists: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
