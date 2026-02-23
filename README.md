@@ -1,10 +1,10 @@
 # Batocera Tailscale Installer
 
-[![Download Latest](https://img.shields.io/badge/Download-Latest%20Release-brightgreen?style=for-the-badge)](https://github.com/grizzlymann/batocera-tailscale-installer/releases/latest/download/batocera-tailscale-installer-latest.tar.gz)
+[![Download Latest](https://img.shields.io/badge/Download-Latest%20Release-brightgreen?style=for-the-badge)](https://github.com/grizzlymannn/batocera-tailscale-installer/releases/latest/download/batocera-tailscale-installer-latest.tar.gz)
 
-[![Build](https://github.com/grizzlymann/batocera-tailscale-installer/actions/workflows/package.yml/badge.svg)](https://github.com/grizzlymann/batocera-tailscale-installer/actions/workflows/package.yml)
-![Latest Release](https://img.shields.io/github/v/release/grizzlymann/batocera-tailscale-installer)
-![License](https://img.shields.io/github/license/grizzlymann/batocera-tailscale-installer)
+[![Build](https://github.com/grizzlymannn/batocera-tailscale-installer/.github/workflows/package.yml/badge.svg)](https://github.com/grizzlymannn/batocera-tailscale-installer/.github/workflows/package.yml)
+![Latest Release](https://img.shields.io/github/v/release/grizzlymannn/batocera-tailscale-installer)
+![License](https://img.shields.io/github/license/grizzlymannn/batocera-tailscale-installer)
 ![Platform](https://img.shields.io/badge/platform-Batocera-blue)
 [![Tailscale](https://img.shields.io/badge/Tailscale-Enabled-00A9E0?logo=tailscale&logoColor=white)](https://tailscale.com)
 
@@ -27,13 +27,13 @@ This project provides a simple, reliable way to install and manage Tailscale wit
 
 Automatic:
 
-'''bash
-curl -fsSL https://raw.githubusercontent.com/grizzlymann/batocera-tailscale-installer/main/bootstrap.sh | bash
+```bash
+curl -fsSL https://raw.githubusercontent.com/grizzlymannn/batocera-tailscale-installer/main/bootstrap.sh | bash
 
 Manual:
 
 ```bash
-curl -L https://github.com/grizzlymann/batocera-tailscale-installer/releases/latest/download/batocera-tailscale-installer-latest.tar.gz
+curl -L https://github.com/grizzlymannn/batocera-tailscale-installer/releases/latest/download/batocera-tailscale-installer-latest.tar.gz
 tar -xzf batocera-tailscale-installer-latest.tar.gz
 cd batocera-tailscale-installer
 chmod +x install.sh
