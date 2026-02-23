@@ -2,10 +2,9 @@
 
 [![Download Latest](https://img.shields.io/badge/Download-Latest%20Release-brightgreen?style=for-the-badge)](https://github.com/grizzlymannn/batocera-tailscale-installer/releases/latest/download/batocera-tailscale-installer-latest.tar.gz)
 
-[![Build](https://github.com/grizzlymannn/batocera-tailscale-installer/actions/workflows/package.yml/badge.svg)](https://github.com/grizzlymannn/batocera-tailscale-installer/actions/workflows/package.yml)
-![Latest Release](https://img.shields.io/github/v/release/grizzlymannn/batocera-tailscale-installer)
+[![Release](https://img.shields.io/github/v/release/grizzlymannn/batocera-tailscale-installer)](https://github.com/grizzlymannn/batocera-tailscale-installer/releases)
 ![License](https://img.shields.io/github/license/grizzlymannn/batocera-tailscale-installer)
-![Platform](https://img.shields.io/badge/platform-Batocera-blue)
+[![Platform](https://img.shields.io/badge/platform-Batocera-blue)](https://batocera.org)
 [![Tailscale](https://img.shields.io/badge/Tailscale-Enabled-00A9E0?logo=tailscale&logoColor=white)](https://tailscale.com)
 
 Lightweight installer, configuration wizard, and monitoring scripts to run Tailscale reliably on Batocera systems.
