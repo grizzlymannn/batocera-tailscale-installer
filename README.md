@@ -7,7 +7,7 @@
 [![Platform](https://img.shields.io/badge/platform-Batocera-blue)](https://batocera.org)
 [![Tailscale](https://img.shields.io/badge/Tailscale-Enabled-00A9E0?logo=tailscale&logoColor=white)](https://tailscale.com)
 
-Lightweight installer, configuration wizard, and monitoring scripts to run Tailscale reliably on Batocera systems.
+Installer, configuration wizard, and monitoring scripts to run Tailscale reliably on Batocera systems.
 
 ## Features
 
@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/grizzlymannn/batocera-tailscale-ins
 Manual:
 
 ```bash
-curl -L https://github.com/grizzlymannn/batocera-tailscale-installer/releases/latest/download/batocera-tailscale-installer-latest.tar.gz
+wget https://github.com/grizzlymannn/batocera-tailscale-installer/releases/latest/download/batocera-tailscale-installer-latest.tar.gz
 tar -xzf batocera-tailscale-installer-latest.tar.gz
 cd batocera-tailscale-installer
 chmod +x install.sh
