@@ -28,11 +28,22 @@ fi
 # Prevent multiple watchdog instances using PID file
 if [[ -f $PIDFILE ]]; then
   oldpid=$(cat "$PIDFILE" 2> /dev/null || true)
-  if [[ -n $oldpid && $oldpid =~ ^[0-9]+$ ]] && kill -0 "$oldpid" 2> /dev/null; then
-    echo "$(date) - Watchdog already running (PID $oldpid), exiting."
-    exit 0
+  if [[ -n $oldpid && $oldpid =~ ^[0-9]+$ ]]; then
+    if kill -0 "$oldpid" 2> /dev/null; then
+      # Verify the PID actually belongs to our watchdog/monitor by checking cmdline
+      if [[ -r "/proc/$oldpid/cmdline" ]] && grep -Fq "$MONITOR_SCRIPT" "/proc/$oldpid/cmdline"; then
+        echo "$(date) - Watchdog already running (PID $oldpid), exiting."
+        exit 0
+      else
+        echo "$(date) - PID $oldpid exists but is not watchdog; removing stale PID file."
+        rm -f "$PIDFILE"
+      fi
+    else
+      echo "$(date) - No process with PID $oldpid; removing stale PID file."
+      rm -f "$PIDFILE"
+    fi
   else
-    echo "$(date) - Removing stale PID file."
+    echo "$(date) - Invalid PID in PID file; removing."
     rm -f "$PIDFILE"
   fi
 fi
