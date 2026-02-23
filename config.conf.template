@@ -1,0 +1,107 @@
+# ==========================================================
+# Tailscale Configuration for Batocera
+# ==========================================================
+# This file controls what settings the monitor script applies
+# when running: tailscale up
+#
+# IMPORTANT:
+# If you specify flags here, they should represent the FULL
+# desired configuration. Tailscale may error if a setting
+# would change due to an unspecified default.
+#
+# Leave values empty ("") to avoid modifying that setting.
+# Use 1 for true, 0 for false for boolean flags.
+# ==========================================================
+
+
+# ----------------------------------------------------------
+# SUBNET ROUTER SETTINGS
+# ----------------------------------------------------------
+
+# Comma-separated routes to advertise.
+# Example: "192.168.1.0/24,10.0.0.0/24"
+# Leave empty to NOT advertise any routes.
+ADVERTISE_ROUTES=""
+
+# Enable source NAT for advertised routes (default true in Tailscale)
+# 1 = enable SNAT
+# 0 = disable SNAT
+SNAT_SUBNET_ROUTES=1
+
+
+# ----------------------------------------------------------
+# EXIT NODE SETTINGS (This device offers internet routing)
+# ----------------------------------------------------------
+
+# Offer this node as an exit node to the tailnet.
+# 1 = yes
+# 0 = no
+ADVERTISE_EXIT_NODE=0
+
+
+# ----------------------------------------------------------
+# USING AN EXIT NODE (This device uses another node)
+# ----------------------------------------------------------
+
+# Exit node to use (IP, name, or auto:any)
+# Example: "100.64.0.5" or "my-exit-node"
+# Leave empty to not use an exit node.
+EXIT_NODE=""
+
+# Allow LAN access while using an exit node
+# 1 = allow local LAN access
+# 0 = block LAN access
+EXIT_NODE_ALLOW_LAN_ACCESS=0
+
+
+# ----------------------------------------------------------
+# ROUTE + DNS BEHAVIOR
+# ----------------------------------------------------------
+
+# Accept routes advertised by other nodes
+# 1 = yes
+# 0 = no
+ACCEPT_ROUTES=0
+
+# Accept DNS settings from Tailscale admin panel
+# 1 = yes
+# 0 = no
+ACCEPT_DNS=1
+
+
+# ----------------------------------------------------------
+# SECURITY
+# ----------------------------------------------------------
+
+# Shields Up mode (block all incoming connections)
+# 1 = enabled
+# 0 = disabled
+SHIELDS_UP=0
+
+
+# ----------------------------------------------------------
+# OPTIONAL
+# ----------------------------------------------------------
+
+# Custom hostname (leave empty to use OS hostname)
+HOSTNAME=""
+
+# Netfilter mode (on, nodivert, off)
+# Leave empty to not modify default Tailscale behavior
+NETFILTER_MODE=""
+
+# Stateful filtering (for subnet routers / exit nodes)
+# 1 = enable
+# 0 = disable
+STATEFUL_FILTERING=0
+
+
+# ----------------------------------------------------------
+# ADVANCED
+# ----------------------------------------------------------
+
+# Reset unspecified settings to defaults
+# WARNING: This forces ALL unspecified settings back to default.
+# 1 = use --reset
+# 0 = do not use
+RESET=0
