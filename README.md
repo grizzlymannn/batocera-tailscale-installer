@@ -2,7 +2,7 @@
 
 [![Download Latest](https://img.shields.io/badge/Download-Latest%20Release-brightgreen?style=for-the-badge)](https://github.com/grizzlymannn/batocera-tailscale-installer/releases/latest/download/batocera-tailscale-installer-latest.tar.gz)
 
-[![Build](https://github.com/grizzlymannn/batocera-tailscale-installer/.github/workflows/package.yml/badge.svg)](https://github.com/grizzlymannn/batocera-tailscale-installer/.github/workflows/package.yml)
+[![Build](https://github.com/grizzlymannn/batocera-tailscale-installer/actions/workflows/package.yml/badge.svg)](https://github.com/grizzlymannn/batocera-tailscale-installer/actions/workflows/package.yml)
 ![Latest Release](https://img.shields.io/github/v/release/grizzlymannn/batocera-tailscale-installer)
 ![License](https://img.shields.io/github/license/grizzlymannn/batocera-tailscale-installer)
 ![Platform](https://img.shields.io/badge/platform-Batocera-blue)
@@ -29,6 +29,7 @@ Automatic:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/grizzlymannn/batocera-tailscale-installer/main/bootstrap.sh | bash
+```
 
 Manual:
 
@@ -38,3 +39,4 @@ tar -xzf batocera-tailscale-installer-latest.tar.gz
 cd batocera-tailscale-installer
 chmod +x install.sh
 ./install.sh
+```
