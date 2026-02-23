@@ -31,21 +31,6 @@ fi
 echo "Extracting archive..."
 tar -xzf "$PACKAGE"
 
-# Detect top-level extraction directory robustly
-TOPDIR=$(tar -tzf "$PACKAGE" | awk -F/ 'NF{print $1; exit}')
-if [[ -z $TOPDIR || ! -d $TOPDIR ]]; then
-    # fallback: find first directory in cwd
-    TOPDIR=$(find . -maxdepth 2 -type d -mindepth 1 | sed 's|^./||' | head -n1 || true)
-fi
-
-if [[ -z $TOPDIR || ! -d $TOPDIR ]]; then
-    echo "ERROR: could not determine extracted directory" >&2
-    exit 1
-fi
-
-echo "Top-level directory: $TOPDIR"
-cd "$TOPDIR"
-
 echo "Running installer..."
 if [[ ! -f install.sh ]]; then
     echo "ERROR: install.sh not found in extracted directory" >&2
