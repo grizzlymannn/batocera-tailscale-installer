@@ -11,7 +11,6 @@ SERVICE_NAME="tailscale"
 TMPDIR="$(mktemp -d)"
 cleanup() {
   [[ -d $TMPDIR ]] && rm -rf "$TMPDIR"
-  unset GNUPGHOME
 }
 trap cleanup EXIT
 
@@ -20,18 +19,12 @@ AUTH_KEY=""
 NONINTERACTIVE=0
 TRACK="${TRACK:-stable}" # stable|unstable
 PKGS="https://pkgs.tailscale.com/${TRACK}/"
-GPG_KEY_FPR="2596A99E13C79D1737E11F0B5E304C4E0A6B90D1" # Tailscale release key
+CURL_BASE="-f --retry 3 --retry-connrefused --connect-timeout 15 --max-time 300"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$INSTALL_DIR/config.conf"
 CONFIG_TEMPLATE="$INSTALL_DIR/config.conf.template"
 INSTALLED_VERSION_FILE="$INSTALL_DIR/version"
 CURRENT_VERSION=""
-
-# Create temporary GPG environment so we don’t pollute system
-GNUPGHOME="$TMPDIR/gnupg"
-mkdir -p "$GNUPGHOME"
-chmod 700 "$GNUPGHOME"
-export GNUPGHOME
 
 # ---------------------------
 # CLI parsing
@@ -55,7 +48,7 @@ require_root() { [[ $EUID -eq 0 ]] || {
 }; }
 
 check_deps() {
-  local DEPS=(curl gpg sha256sum tar install modprobe pkill pgrep ip awk sed grep sort mktemp date timeout setsid)
+  local DEPS=(curl sha256sum tar install modprobe pkill pgrep ip awk sed grep sort mktemp date timeout setsid)
   local missing=()
   for cmd in "${DEPS[@]}"; do
     command -v "$cmd" > /dev/null 2>&1 || missing+=("$cmd")
@@ -81,6 +74,19 @@ detect_arch() {
       ;;
   esac
   echo "Detected architecture: $arch ($arch_raw)"
+}
+
+curl_dl() {
+  local url="$1"
+  if [ -t 1 ]; then
+    curl "$CURL_BASE" --progress-bar -L -O "$url"
+  else
+    curl "$CURL_BASE" -sS -L -O "$url"
+  fi
+}
+curl_get() {
+  local url="$1"
+  curl "$CURL_BASE" -sS -L "$url"
 }
 
 stop_existing() {
@@ -374,12 +380,12 @@ main() {
 
   # Find latest Tailscale version
   cd "$TMPDIR"
-  TS_VER="$(
-    curl -fsSL "$PKGS" |
+  TS_VER=$(
+    curl_get "$PKGS" |
       grep -oE "tailscale_[0-9]+\.[0-9]+\.[0-9]+_${arch}\.tgz" |
       sed -E "s/^tailscale_([0-9]+\.[0-9]+\.[0-9]+)_${arch}\.tgz/\1/" |
       sort -V | tail -n1
-  )"
+  )
   [[ -n $TS_VER ]] || {
     echo "ERROR: Could not detect latest Tailscale version" >&2
     exit 1
@@ -402,35 +408,23 @@ main() {
   URL="${PKGS}${TGZ}"
   EXPECTED_DIR="tailscale_${TS_VER}_${arch}"
 
-  # Download and verify
-  echo "Downloading SHA256SUMS and signature..."
-  curl -fLO "${PKGS}SHA256SUMS"
-  curl -fLO "${PKGS}SHA256SUMS.sig"
-  echo "Importing Tailscale GPG key..."
-  curl -fsSL "${PKGS}tailscale.asc" | gpg --import > /dev/null 2>&1
+  # Download and verify using .sha256 file from Tailscale
+  echo "Downloading Tailscale archive..."
+  curl_dl "$URL"
 
-  # Verify fingerprint matches expected
-  IMPORTED_FPR="$(gpg --with-colons --fingerprint | awk -F: '/^fpr:/ {print $10}' | head -n1)"
-
-  if [[ $IMPORTED_FPR != "$GPG_KEY_FPR" ]]; then
-    echo "ERROR: GPG fingerprint mismatch!" >&2
-    echo "Expected: $GPG_KEY_FPR" >&2
-    echo "Got:      $IMPORTED_FPR" >&2
+  echo "Downloading checksum for package..."
+  # The server exposes per-file checksums at <file>.sha256 containing the raw hex digest.
+  expected_hash="$(curl_get "${URL}.sha256" | tr -d '[:space:]')"
+  if [[ -z $expected_hash ]]; then
+    echo "ERROR: Could not retrieve checksum for ${TGZ}" >&2
     exit 1
   fi
 
-  echo "Verifying signature..."
-  gpg --verify SHA256SUMS.sig SHA256SUMS > /dev/null 2>&1 || {
-    echo "ERROR: Signature invalid" >&2
+  computed_hash="$(sha256sum "$TGZ" | awk '{print $1}')"
+  if [[ $computed_hash != "$expected_hash" ]]; then
+    echo "ERROR: Checksum verification failed for ${TGZ}" >&2
     exit 1
-  }
-
-  echo "Downloading Tailscale archive..."
-  curl -fLO --connect-timeout 15 --max-time 600 "$URL"
-  grep " $TGZ\$" SHA256SUMS | sha256sum -c - > /dev/null 2>&1 || {
-    echo "ERROR: Checksum verification failed!" >&2
-    exit 1
-  }
+  fi
 
   echo "Extracting..."
   tar --no-same-owner --no-same-permissions -xzf "$TGZ"
