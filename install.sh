@@ -19,7 +19,7 @@ AUTH_KEY=""
 NONINTERACTIVE=0
 TRACK="${TRACK:-stable}" # stable|unstable
 PKGS="https://pkgs.tailscale.com/${TRACK}/"
-CURL_BASE="-f --retry 3 --retry-connrefused --connect-timeout 15 --max-time 300"
+CURL_OPTS=(-f --retry 3 --retry-connrefused --connect-timeout 15 --max-time 600)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$INSTALL_DIR/config.conf"
 CONFIG_TEMPLATE="$INSTALL_DIR/config.conf.template"
@@ -79,14 +79,14 @@ detect_arch() {
 curl_dl() {
   local url="$1"
   if [ -t 1 ]; then
-    curl "$CURL_BASE" --progress-bar -L -O "$url"
+    curl "${CURL_OPTS[@]}" --progress-bar -L -O "$url"
   else
-    curl "$CURL_BASE" -sS -L -O "$url"
+    curl "${CURL_OPTS[@]}" -sS -L -O "$url"
   fi
 }
 curl_get() {
   local url="$1"
-  curl "$CURL_BASE" -sS -L "$url"
+  curl "${CURL_OPTS[@]}" -sS -L "$url"
 }
 
 stop_existing() {
