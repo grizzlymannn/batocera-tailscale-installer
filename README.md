@@ -1,10 +1,10 @@
 # Batocera Tailscale Installer
 
-[![Download Latest](https://img.shields.io/badge/Download-Latest%20Release-brightgreen?style=for-the-badge)](https://github.com/<yourusername>/batocera-tailscale-installer/releases/latest/download/batocera-tailscale-installer-latest.tar.gz)
+[![Download Latest](https://img.shields.io/badge/Download-Latest%20Release-brightgreen?style=for-the-badge)](https://github.com/grizzlymann/batocera-tailscale-installer/releases/latest/download/batocera-tailscale-installer-latest.tar.gz)
 
-[![Build](https://github.com/grizzlymann/batocera-tailscale-installer/actions/workflows/package.yml/badge.svg)](https://github.com/<yourusername>/batocera-tailscale-installer/actions/workflows/package.yml)
-![Latest Release](https://img.shields.io/github/v/release/<yourusername>/batocera-tailscale-installer)
-![License](https://img.shields.io/github/license/<yourusername>/batocera-tailscale-installer)
+[![Build](https://github.com/grizzlymann/batocera-tailscale-installer/actions/workflows/package.yml/badge.svg)](https://github.com/grizzlymann/batocera-tailscale-installer/actions/workflows/package.yml)
+![Latest Release](https://img.shields.io/github/v/release/grizzlymann/batocera-tailscale-installer)
+![License](https://img.shields.io/github/license/grizzlymann/batocera-tailscale-installer)
 ![Platform](https://img.shields.io/badge/platform-Batocera-blue)
 [![Tailscale](https://img.shields.io/badge/Tailscale-Enabled-00A9E0?logo=tailscale&logoColor=white)](https://tailscale.com)
 
