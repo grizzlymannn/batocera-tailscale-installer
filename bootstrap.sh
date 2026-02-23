@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+clear
 
 REPO="grizzlymannn/batocera-tailscale-installer"
 PACKAGE="batocera-tailscale-installer-latest.tar.gz"
@@ -42,9 +43,15 @@ if [[ -z $TOPDIR || ! -d $TOPDIR ]]; then
     exit 1
 fi
 
+echo "Top-level directory: $TOPDIR"
 cd "$TOPDIR"
 
 echo "Running installer..."
+if [[ ! -f install.sh ]]; then
+    echo "ERROR: install.sh not found in extracted directory" >&2
+    exit 1
+fi
+
 if [[ $EUID -ne 0 ]]; then
     if command -v sudo > /dev/null 2>&1; then
         echo "Installer requires root; running with sudo"

@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+clear
 
 VERSION="dev"
 
